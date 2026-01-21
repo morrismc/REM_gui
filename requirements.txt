@@ -1,0 +1,29 @@
+# REM GUI - Requirements
+#
+# For minimal installation (GUI only, requires RiverREM to be installed separately):
+#   pip install -r requirements.txt
+#
+# For building the executable:
+#   pip install -r requirements-build.txt
+
+# Core RiverREM dependency
+# Install from PyPI:
+riverrem>=0.2.0
+# Or install from GitHub for latest:
+# git+https://github.com/OpenTopography/RiverREM.git
+
+# GDAL - usually needs to be installed via system package manager or conda
+# conda install -c conda-forge gdal
+# or on Ubuntu: apt-get install python3-gdal
+GDAL>=3.0.0
+
+# These are typically installed as RiverREM dependencies but listed for clarity:
+numpy>=1.20.0
+scipy>=1.7.0
+geopandas>=0.9.0
+shapely>=1.8.0
+osmnx>=1.1.0
+matplotlib>=3.3.0
+seaborn>=0.11.0
+Pillow>=8.0.0
+requests>=2.25.0
