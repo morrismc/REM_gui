@@ -1,0 +1,19 @@
+# REM GUI - Build Requirements
+#
+# Install these in a clean virtual environment before building the executable
+#
+# RECOMMENDED: Use conda for geospatial dependencies
+#   conda create -n rem_gui python=3.10
+#   conda activate rem_gui
+#   conda install -c conda-forge gdal geopandas osmnx scipy matplotlib seaborn
+#   pip install -r requirements-build.txt
+#   pyinstaller rem_gui.spec
+
+# Runtime dependencies (minimal set)
+riverrem>=0.2.0
+
+# PyInstaller for building executable
+pyinstaller>=5.0
+
+# Optional: UPX for better compression (install separately)
+# Download from: https://github.com/upx/upx/releases
