@@ -717,18 +717,45 @@ class REMApp:
             self._log(f"K neighbors: {'auto' if k is None else k}")
             self._log(f"Workers: {workers}")
 
-            # Create REMMaker instance
+            # Create REMMaker instance - handle different API versions
             self._log("\nInitializing REMMaker...")
-            rem_maker = REMMaker(
-                dem=dem_path,
-                centerline_shp=centerline_shp,
-                out_dir=out_dir,
-                interp_pts=interp_pts,
-                k=k,
-                eps=eps,
-                workers=workers,
-                chunk_size=int(chunk_size)
-            )
+
+            # Check which parameters REMMaker accepts (varies by version)
+            import inspect
+            try:
+                sig = inspect.signature(REMMaker.__init__)
+                available_params = set(sig.parameters.keys())
+            except (ValueError, TypeError):
+                available_params = set()
+
+            # Build kwargs based on available parameters
+            rem_kwargs = {'dem': dem_path, 'out_dir': out_dir}
+
+            # Add optional parameters if supported by this version
+            optional_params = {
+                'centerline_shp': centerline_shp,
+                'interp_pts': interp_pts,
+                'k': k,
+                'eps': eps,
+                'workers': workers,
+                'chunk_size': int(chunk_size)
+            }
+
+            for param, value in optional_params.items():
+                if param in available_params:
+                    rem_kwargs[param] = value
+                elif param == 'centerline_shp' and value is not None:
+                    self._log(f"Warning: Custom centerline not supported in this RiverREM version", 'warning')
+                    self._log(f"  Install latest: pip install git+https://github.com/OpenTopography/RiverREM.git", 'warning')
+
+            # Log which API version we're using
+            if 'centerline_shp' in available_params:
+                self._log("Using full RiverREM API (GitHub version)")
+            else:
+                self._log("Using basic RiverREM API (PyPI version 0.0.1)")
+                self._log("  For more options, install from GitHub")
+
+            rem_maker = REMMaker(**rem_kwargs)
 
             if not self.is_processing:
                 self._log("Processing cancelled by user")
