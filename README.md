@@ -54,11 +54,11 @@ This tool makes REM creation accessible to non-technical users by providing a si
 
 ### Option 1: Run from Source
 
-1. Create a conda environment (recommended for geospatial packages):
+1. Create a mamba environment (recommended for geospatial packages):
 ```bash
-conda create -n rem_gui python=3.10
-conda activate rem_gui
-conda install -c conda-forge gdal geopandas osmnx scipy matplotlib seaborn
+mamba create -n rem_gui python=3.10
+mamba activate rem_gui
+mamba install -c conda-forge gdal geopandas osmnx scipy matplotlib seaborn
 pip install riverrem
 ```
 
@@ -89,12 +89,12 @@ A 300-500 MB distribution is **normal** for this type of application.
 
 1. **Set up a clean build environment** (crucial for smaller size):
 ```bash
-# Create minimal conda environment
-conda create -n rem_build python=3.10
-conda activate rem_build
+# Create minimal mamba environment
+mamba create -n rem_build python=3.10
+mamba activate rem_build
 
-# Install only runtime dependencies via conda
-conda install -c conda-forge gdal geopandas osmnx scipy matplotlib seaborn riverrem
+# Install only runtime dependencies via mamba
+mamba install -c conda-forge gdal geopandas osmnx scipy matplotlib seaborn riverrem
 
 # Install PyInstaller
 pip install pyinstaller
@@ -116,7 +116,7 @@ pyinstaller rem_gui.spec
 ### Size Optimization Tips
 
 1. **Use a clean virtual environment** - Don't install development tools
-2. **Use conda for geospatial packages** - Better dependency resolution
+2. **Use mamba for geospatial packages** - Faster dependency resolution than conda
 3. **Prefer folder distribution** - Smaller and faster than single-file
 4. **Compress for distribution**: `7z a -mx=9 REM_GUI.7z dist/REM_GUI/` (reduces to ~100-150 MB)
 
@@ -175,10 +175,10 @@ REM_gui/
 ## Troubleshooting
 
 ### "Could not import RiverREM"
-Install RiverREM: `pip install riverrem` or `conda install -c conda-forge riverrem`
+Install RiverREM: `pip install riverrem` or `mamba install -c conda-forge riverrem`
 
 ### "GDAL not found" or "osgeo import error"
-GDAL requires system libraries. Use conda: `conda install -c conda-forge gdal`
+GDAL requires system libraries. Use mamba: `mamba install -c conda-forge gdal`
 
 ### "No rivers found in extent"
 - Your DEM extent may not contain OpenStreetMap river data

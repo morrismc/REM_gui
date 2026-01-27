@@ -167,10 +167,10 @@ def post_build_report():
      - Don't install dev tools (pytest, ipython, etc.)
      - Only install what's needed for runtime
 
-  2. Use conda for geospatial packages (better dependency resolution)
-     conda create -n rem_build python=3.10
-     conda activate rem_build
-     conda install -c conda-forge gdal geopandas osmnx riverrem
+  2. Use mamba for geospatial packages (faster dependency resolution)
+     mamba create -n rem_build python=3.10
+     mamba activate rem_build
+     mamba install -c conda-forge gdal geopandas osmnx riverrem
      pip install pyinstaller
 
   3. The folder distribution is usually better than onefile:
