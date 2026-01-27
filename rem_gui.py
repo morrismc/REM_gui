@@ -633,6 +633,33 @@ class REMApp:
             self._log(f"Could not setup GDAL compatibility: {e}", 'error')
             return False
 
+    def _setup_shapely_compatibility(self):
+        """Setup Shapely import compatibility for older libraries like osmnx.
+
+        Shapely 2.0+ moved TopologicalError from shapely.geos to shapely.errors.
+        This shim adds the old import path for libraries using the old location.
+        """
+        try:
+            # Check if the old import path already works
+            from shapely.geos import TopologicalError
+            return True
+        except ImportError:
+            pass
+
+        try:
+            # Import from new location and patch the old module
+            from shapely.errors import TopologicalError
+            import shapely.geos
+
+            # Add TopologicalError to the old module location
+            shapely.geos.TopologicalError = TopologicalError
+
+            self._log("Shapely compatibility shim applied (shapely.errors -> shapely.geos)")
+            return True
+        except ImportError as e:
+            self._log(f"Could not setup Shapely compatibility: {e}", 'error')
+            return False
+
     def _run_rem_maker(self):
         """Run the REM generation in a background thread."""
         # Redirect stdout for this thread
@@ -644,12 +671,15 @@ class REMApp:
             self._log("Starting REM generation...")
             self._log("=" * 50)
 
-            # Setup GDAL compatibility before importing RiverREM
-            self._log("Setting up GDAL compatibility...")
+            # Setup compatibility shims before importing RiverREM
+            self._log("Setting up library compatibility...")
             if not self._setup_gdal_compatibility():
                 self._log("Error: GDAL is not properly installed.", 'error')
                 self._log("  Install with: conda install -c conda-forge gdal", 'error')
                 raise ImportError("GDAL not available")
+
+            if not self._setup_shapely_compatibility():
+                self._log("Warning: Shapely compatibility shim failed, continuing anyway...", 'warning')
 
             # Import RiverREM
             self._log("Loading RiverREM library...")
