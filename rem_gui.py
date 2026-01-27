@@ -604,6 +604,35 @@ class REMApp:
             self._log("Cancellation requested. Processing will stop after current step...")
             self.is_processing = False
 
+    def _setup_gdal_compatibility(self):
+        """Setup GDAL import compatibility for older libraries like RiverREM.
+
+        GDAL 3.x changed the import style from 'import gdal' to 'from osgeo import gdal'.
+        This shim allows libraries using the old import style to work with newer GDAL.
+        """
+        try:
+            # Check if gdal is already importable directly
+            import gdal
+            return True
+        except ImportError:
+            pass
+
+        try:
+            # Try to import from osgeo and create compatibility aliases
+            from osgeo import gdal, ogr, osr, gdal_array
+
+            # Add osgeo modules to sys.modules with their old names
+            sys.modules['gdal'] = gdal
+            sys.modules['ogr'] = ogr
+            sys.modules['osr'] = osr
+            sys.modules['gdal_array'] = gdal_array
+
+            self._log("GDAL compatibility shim applied (osgeo -> gdal)")
+            return True
+        except ImportError as e:
+            self._log(f"Could not setup GDAL compatibility: {e}", 'error')
+            return False
+
     def _run_rem_maker(self):
         """Run the REM generation in a background thread."""
         # Redirect stdout for this thread
@@ -614,6 +643,13 @@ class REMApp:
             self._log("=" * 50)
             self._log("Starting REM generation...")
             self._log("=" * 50)
+
+            # Setup GDAL compatibility before importing RiverREM
+            self._log("Setting up GDAL compatibility...")
+            if not self._setup_gdal_compatibility():
+                self._log("Error: GDAL is not properly installed.", 'error')
+                self._log("  Install with: conda install -c conda-forge gdal", 'error')
+                raise ImportError("GDAL not available")
 
             # Import RiverREM
             self._log("Loading RiverREM library...")
