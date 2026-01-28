@@ -636,29 +636,62 @@ class REMApp:
     def _setup_shapely_compatibility(self):
         """Setup Shapely import compatibility for older libraries like osmnx.
 
-        Shapely 2.0+ moved TopologicalError from shapely.geos to shapely.errors.
-        This shim adds the old import path for libraries using the old location.
+        Shapely 2.0+ made several breaking changes:
+        1. Moved TopologicalError from shapely.geos to shapely.errors
+        2. Multi* geometries are no longer directly iterable (must use .geoms)
+
+        This shim patches these for backwards compatibility.
         """
+        patched_anything = False
+
+        # Patch 1: TopologicalError location
         try:
-            # Check if the old import path already works
             from shapely.geos import TopologicalError
-            return True
         except ImportError:
-            pass
+            try:
+                from shapely.errors import TopologicalError
+                import shapely.geos
+                shapely.geos.TopologicalError = TopologicalError
+                self._log("Shapely compatibility: TopologicalError patched")
+                patched_anything = True
+            except ImportError:
+                pass
 
+        # Patch 2: Make Multi* geometries iterable (Shapely 2.0 breaking change)
         try:
-            # Import from new location and patch the old module
-            from shapely.errors import TopologicalError
-            import shapely.geos
+            from shapely.geometry import MultiPolygon, MultiLineString, MultiPoint
 
-            # Add TopologicalError to the old module location
-            shapely.geos.TopologicalError = TopologicalError
+            # Check if MultiPolygon is already iterable
+            test_iter_needed = False
+            try:
+                # In Shapely 2.0+, this will fail
+                iter(MultiPolygon())
+            except TypeError:
+                test_iter_needed = True
+            except Exception:
+                # Empty MultiPolygon might raise other errors, check another way
+                if not hasattr(MultiPolygon, '__iter__') or MultiPolygon.__iter__ is None:
+                    test_iter_needed = True
 
-            self._log("Shapely compatibility shim applied (shapely.errors -> shapely.geos)")
-            return True
-        except ImportError as e:
-            self._log(f"Could not setup Shapely compatibility: {e}", 'error')
-            return False
+            if test_iter_needed:
+                # Add __iter__ method to Multi* classes to yield from .geoms
+                def multi_iter(self):
+                    return iter(self.geoms)
+
+                MultiPolygon.__iter__ = multi_iter
+                MultiLineString.__iter__ = multi_iter
+                MultiPoint.__iter__ = multi_iter
+
+                self._log("Shapely compatibility: Multi* geometry iteration patched")
+                patched_anything = True
+
+        except Exception as e:
+            self._log(f"Warning: Could not patch Multi* iteration: {e}", 'warning')
+
+        if patched_anything:
+            self._log("Shapely compatibility shim applied")
+
+        return True
 
     def _run_rem_maker(self):
         """Run the REM generation in a background thread."""
