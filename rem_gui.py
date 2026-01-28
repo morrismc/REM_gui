@@ -693,6 +693,51 @@ class REMApp:
 
         return True
 
+    def _setup_osmnx_compatibility(self):
+        """Setup osmnx compatibility for RiverREM.
+
+        osmnx 2.0+ made breaking changes:
+        1. Renamed geometries_from_bbox -> features_from_bbox
+        2. Changed bbox from positional (north, south, east, west) to
+           a single tuple (west, south, east, north)
+        """
+        try:
+            import osmnx
+
+            # Check if old API still exists
+            if hasattr(osmnx, 'geometries_from_bbox'):
+                return True
+
+            # osmnx 2.0+: need to create compatibility wrapper
+            if hasattr(osmnx, 'features_from_bbox'):
+                def geometries_from_bbox(north, south, east, west, tags):
+                    # Convert old (north, south, east, west) positional args
+                    # to new bbox=(west, south, east, north) tuple format
+                    return osmnx.features_from_bbox(
+                        bbox=(west, south, east, north), tags=tags
+                    )
+
+                osmnx.geometries_from_bbox = geometries_from_bbox
+                self._log("osmnx compatibility: geometries_from_bbox patched")
+                return True
+
+            # Try the features module directly
+            if hasattr(osmnx, 'features') and hasattr(osmnx.features, 'features_from_bbox'):
+                def geometries_from_bbox(north, south, east, west, tags):
+                    return osmnx.features.features_from_bbox(
+                        bbox=(west, south, east, north), tags=tags
+                    )
+
+                osmnx.geometries_from_bbox = geometries_from_bbox
+                self._log("osmnx compatibility: geometries_from_bbox patched (via features module)")
+                return True
+
+            self._log("Warning: osmnx missing both geometries_from_bbox and features_from_bbox", 'warning')
+            return False
+        except ImportError as e:
+            self._log(f"Could not setup osmnx compatibility: {e}", 'error')
+            return False
+
     def _run_rem_maker(self):
         """Run the REM generation in a background thread."""
         # Redirect stdout for this thread
@@ -713,6 +758,9 @@ class REMApp:
 
             if not self._setup_shapely_compatibility():
                 self._log("Warning: Shapely compatibility shim failed, continuing anyway...", 'warning')
+
+            if not self._setup_osmnx_compatibility():
+                self._log("Warning: osmnx compatibility shim failed, continuing anyway...", 'warning')
 
             # Import RiverREM
             self._log("Loading RiverREM library...")
@@ -790,6 +838,15 @@ class REMApp:
 
             rem_maker = REMMaker(**rem_kwargs)
 
+            # Fix GDAL 3.x compatibility: ensure cell dimensions are positive
+            # floats. RiverREM uses these in gdal.Rasterize -tr option, but
+            # gt[5] from GeoTransform is typically negative, and newer GDAL
+            # rejects negative -tr values. Also convert from numpy types.
+            if hasattr(rem_maker, 'cell_h') and rem_maker.cell_h is not None:
+                rem_maker.cell_h = abs(float(rem_maker.cell_h))
+            if hasattr(rem_maker, 'cell_w') and rem_maker.cell_w is not None:
+                rem_maker.cell_w = abs(float(rem_maker.cell_w))
+
             if not self.is_processing:
                 self._log("Processing cancelled by user")
                 return
@@ -846,10 +903,14 @@ class REMApp:
             import traceback
             self._log(traceback.format_exc(), 'error')
 
+            # Capture error message before except block exits (Python 3
+            # deletes 'e' after the except block, causing NameError in lambda)
+            error_msg = str(e)
+
             # Show error message on main thread
             self.root.after(0, lambda: messagebox.showerror(
                 "Error",
-                f"An error occurred during processing:\n\n{str(e)}"
+                f"An error occurred during processing:\n\n{error_msg}"
             ))
 
         finally:
