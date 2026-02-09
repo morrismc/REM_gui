@@ -20,12 +20,48 @@ For a one-folder distribution (smaller total, faster startup):
 
 import sys
 import os
+from PyInstaller.utils.hooks import collect_data_files, copy_metadata
 
 # Increase recursion limit for complex dependency trees
 sys.setrecursionlimit(5000)
 
 # Base path for finding files
 block_cipher = None
+
+# Collect package metadata needed by importlib.metadata at runtime.
+# osmnx calls importlib.metadata.version("osmnx") on import, which fails
+# without the dist-info directory bundled.
+datas = []
+try:
+    datas += copy_metadata('osmnx')
+except Exception:
+    pass
+try:
+    datas += copy_metadata('riverrem')
+except Exception:
+    pass
+
+# Collect data files for packages that need them
+try:
+    datas += collect_data_files('pyproj')
+except Exception:
+    pass
+try:
+    datas += collect_data_files('matplotlib')
+except Exception:
+    pass
+try:
+    datas += collect_data_files('cmocean')
+except Exception:
+    pass
+try:
+    datas += collect_data_files('fiona')
+except Exception:
+    pass
+try:
+    datas += collect_data_files('rasterio')
+except Exception:
+    pass
 
 # Define which packages are truly needed
 # These are the core dependencies for RiverREM
@@ -163,7 +199,7 @@ a = Analysis(
     ['rem_gui.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=datas,
     hiddenimports=HIDDEN_IMPORTS,
     hookspath=[],
     hooksconfig={},
