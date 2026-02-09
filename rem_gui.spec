@@ -126,10 +126,9 @@ HIDDEN_IMPORTS = [
 
 # Packages to completely exclude (not needed, saves space)
 EXCLUDES = [
-    # Testing frameworks
+    # Testing frameworks (not unittest - numpy.testing needs it at runtime)
     'pytest',
     'nose',
-    'unittest',
     'test',
     'tests',
 
