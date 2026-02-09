@@ -124,19 +124,19 @@ HIDDEN_IMPORTS = [
     'riverrem.REMMaker',
 ]
 
-# Packages to completely exclude (not needed, saves space)
+# Packages to exclude. ONLY exclude third-party packages that are clearly
+# not part of the dependency chain. Never exclude standard library modules
+# (unittest, pydoc, sqlite3, xml.*, etc.) — scientific Python packages
+# import them in unexpected ways at runtime.
 EXCLUDES = [
-    # Testing frameworks (not unittest - numpy.testing needs it at runtime)
+    # Third-party test runners
     'pytest',
     'nose',
-    'test',
-    'tests',
 
     # Documentation tools
     'sphinx',
-    'docutils',
 
-    # Development tools
+    # IPython/Jupyter ecosystem
     'IPython',
     'ipykernel',
     'ipywidgets',
@@ -153,42 +153,23 @@ EXCLUDES = [
     'dask',
     'distributed',
 
-    # Unused plotting backends
+    # Unused GUI backends (app uses tkinter)
     'PyQt5',
     'PyQt6',
     'PySide2',
     'PySide6',
     'wx',
 
-    # Unused database
-    'sqlalchemy',
-    'sqlite3',
-    'psycopg2',
-
-    # pkg_resources/setuptools: not needed at runtime and setuptools vendors
-    # jaraco.text which tries to read "Lorem ipsum.txt" at import time,
-    # causing FileNotFoundError in the frozen build.
+    # pkg_resources/setuptools: setuptools vendors jaraco.text which tries
+    # to read "Lorem ipsum.txt" at import time, causing FileNotFoundError.
     'pkg_resources',
     'setuptools',
 
-    # Other large unused packages
+    # Other third-party packages not needed
     'tornado',
     'zmq',
     'jedi',
     'parso',
-    'pydoc',
-    'lib2to3',
-
-    # Unused encodings
-    'encodings.cp1250',
-    'encodings.cp1251',
-    'encodings.cp1252',
-    'encodings.cp1253',
-    'encodings.cp1254',
-    'encodings.cp1255',
-    'encodings.cp1256',
-    'encodings.cp1257',
-    'encodings.cp1258',
 ]
 
 a = Analysis(
