@@ -51,11 +51,13 @@ class StdoutRedirector:
     def write(self, text):
         if text.strip():  # Only queue non-empty messages
             self.message_queue.put(text if text.endswith('\n') else text + '\n')
-        # Also write to original stdout for debugging
-        self.original_stdout.write(text)
+        # Also write to original stdout for debugging (may be None in frozen builds)
+        if self.original_stdout is not None:
+            self.original_stdout.write(text)
 
     def flush(self):
-        self.original_stdout.flush()
+        if self.original_stdout is not None:
+            self.original_stdout.flush()
 
 
 class CollapsibleFrame(ttk.Frame):
