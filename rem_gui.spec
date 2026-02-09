@@ -55,10 +55,6 @@ try:
 except Exception:
     pass
 try:
-    datas += collect_data_files('fiona')
-except Exception:
-    pass
-try:
     datas += collect_data_files('rasterio')
 except Exception:
     pass
@@ -68,7 +64,6 @@ except Exception:
 HIDDEN_IMPORTS = [
     # Core numerical/scientific
     'numpy',
-    'numpy.core._methods',
     'numpy.lib.format',
 
     # Geospatial core
@@ -92,9 +87,6 @@ HIDDEN_IMPORTS = [
     'pyproj',
     'pyproj.crs',
     'fiona',
-    'fiona.crs',
-    'fiona._shim',
-    'fiona.schema',
 
     # OSMnx for OpenStreetMap data
     'osmnx',
@@ -187,7 +179,6 @@ EXCLUDES = [
     'parso',
     'pydoc',
     'lib2to3',
-    'xml.etree.ElementTree',  # If not needed
 
     # Unused encodings
     'encodings.cp1250',
@@ -217,16 +208,15 @@ a = Analysis(
     noarchive=False,
 )
 
-# Remove unnecessary binaries to reduce size
-# Filter out test files and documentation
+# Filter out test/doc/example directories to reduce size.
+# Use path separators to avoid false matches (e.g., don't strip
+# "Lorem ipsum.txt" or METADATA files that happen to contain "test").
 a.datas = [x for x in a.datas if not any(
-    pattern in x[0].lower() for pattern in [
-        'test', 'tests', 'testing',
-        'doc', 'docs', 'documentation',
-        'example', 'examples',
-        'sample', 'samples',
-        'license', 'readme',
-        '.md', '.rst', '.txt',
+    pattern in x[0].replace('\\', '/').lower() for pattern in [
+        '/tests/', '/test/', '/testing/',
+        '/docs/', '/doc/', '/documentation/',
+        '/examples/', '/example/',
+        '/samples/', '/sample/',
     ]
 )]
 
