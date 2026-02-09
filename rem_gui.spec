@@ -41,6 +41,13 @@ try:
 except Exception:
     pass
 
+# jaraco.text is imported by pkg_resources at startup and needs its
+# "Lorem ipsum.txt" data file bundled alongside the code.
+try:
+    datas += collect_data_files('jaraco.text')
+except Exception:
+    pass
+
 # Collect data files for packages that need them
 try:
     datas += collect_data_files('pyproj')
