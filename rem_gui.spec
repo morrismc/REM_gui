@@ -41,13 +41,6 @@ try:
 except Exception:
     pass
 
-# jaraco.text is imported by pkg_resources at startup and needs its
-# "Lorem ipsum.txt" data file bundled alongside the code.
-try:
-    datas += collect_data_files('jaraco.text')
-except Exception:
-    pass
-
 # Collect data files for packages that need them
 try:
     datas += collect_data_files('pyproj')
@@ -180,6 +173,12 @@ EXCLUDES = [
     'sqlalchemy',
     'sqlite3',
     'psycopg2',
+
+    # pkg_resources/setuptools: not needed at runtime and setuptools vendors
+    # jaraco.text which tries to read "Lorem ipsum.txt" at import time,
+    # causing FileNotFoundError in the frozen build.
+    'pkg_resources',
+    'setuptools',
 
     # Other large unused packages
     'tornado',
