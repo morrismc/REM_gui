@@ -221,7 +221,7 @@ class REMApp:
         ).pack(side='left', padx=(0, 20))
 
         ttk.Radiobutton(
-            centerline_frame, text="Use custom shapefile",
+            centerline_frame, text="Use custom centerline file",
             variable=self.centerline_source, value="custom",
             command=self._toggle_centerline_source
         ).pack(side='left')
@@ -230,7 +230,7 @@ class REMApp:
         self.shapefile_frame = ttk.Frame(self.main_frame)
         self.shapefile_frame.grid(row=7, column=0, columnspan=3, sticky='ew', pady=5)
 
-        ttk.Label(self.shapefile_frame, text="Shapefile:").pack(side='left', padx=(20, 10))
+        ttk.Label(self.shapefile_frame, text="Centerline:").pack(side='left', padx=(20, 10))
 
         self.shapefile_var = tk.StringVar()
         self.shapefile_entry = ttk.Entry(self.shapefile_frame, textvariable=self.shapefile_var, width=40)
@@ -463,15 +463,19 @@ class REMApp:
             self.outdir_var.set(dirpath)
 
     def _browse_shapefile(self):
-        """Open file dialog for shapefile selection."""
+        """Open file dialog for centerline file selection."""
         filetypes = [
+            ("Vector files", "*.shp *.geojson *.json *.gpkg *.kml"),
             ("Shapefiles", "*.shp"),
+            ("GeoJSON", "*.geojson *.json"),
+            ("GeoPackage", "*.gpkg"),
+            ("KML", "*.kml"),
             ("All files", "*.*")
         ]
-        filepath = filedialog.askopenfilename(title="Select Centerline Shapefile", filetypes=filetypes)
+        filepath = filedialog.askopenfilename(title="Select Centerline File", filetypes=filetypes)
         if filepath:
             self.shapefile_var.set(filepath)
-            self._log(f"Custom centerline shapefile selected: {os.path.basename(filepath)}")
+            self._log(f"Custom centerline file selected: {os.path.basename(filepath)}")
 
     def _toggle_centerline_source(self):
         """Toggle between OSM and custom centerline source."""
@@ -555,9 +559,9 @@ class REMApp:
         if self.centerline_source.get() == "custom":
             shp_path = self.shapefile_var.get().strip()
             if not shp_path:
-                errors.append("Please select a centerline shapefile or use OSM")
+                errors.append("Please select a centerline file or use OSM")
             elif not os.path.isfile(shp_path):
-                errors.append(f"Shapefile not found: {shp_path}")
+                errors.append(f"Centerline file not found: {shp_path}")
 
         # Validate k value
         k_str = self.k_var.get().strip()
@@ -855,7 +859,26 @@ class REMApp:
 
             # Generate REM
             self._log("\nGenerating REM (this may take a while)...")
-            rem_path = rem_maker.make_rem()
+            try:
+                rem_path = rem_maker.make_rem()
+            except ImportError as e:
+                err_msg = str(e)
+                if 'pyogrio' in err_msg or 'fiona' in err_msg or 'read_file' in err_msg:
+                    self._log("Error: Could not read centerline file.", 'error')
+                    self._log("  The 'pyogrio' or 'fiona' package is missing or failed to load.", 'error')
+                    self._log("  Install with: pip install pyogrio", 'error')
+                    self._log("  Or: pip install fiona", 'error')
+                    raise
+                raise
+            except Exception as e:
+                err_msg = str(e)
+                if centerline_shp and ('crs' in err_msg.lower() or 'projection' in err_msg.lower()
+                                       or 'transform' in err_msg.lower()):
+                    self._log(f"Error reading centerline file: {e}", 'error')
+                    self._log("  The centerline file may have an incompatible projection.", 'error')
+                    self._log("  Ensure the centerline CRS matches or can be reprojected to the DEM CRS.", 'error')
+                    raise
+                raise
             self._log(f"REM created: {rem_path}", 'success')
 
             if not self.is_processing:
