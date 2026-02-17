@@ -404,15 +404,45 @@ class REMApp:
                                style='Status.TLabel', relief='sunken', anchor='w')
         status_bar.grid(row=15, column=0, columnspan=3, sticky='ew', pady=(5, 0))
 
-        # Attribution
+        # Attribution and About
+        attr_frame = ttk.Frame(self.main_frame)
+        attr_frame.grid(row=16, column=0, columnspan=3, sticky='ew', pady=(2, 0))
+
         attribution_text = (
             "GUI by Matthew C. Morriss (Utah Geological Survey). "
-            "Underlying REM code (RiverREM) by Kenneth Larrieu (OpenTopography)."
+            "RiverREM by Kenneth Larrieu (OpenTopography). "
+            "Licensed under GPL-3.0."
         )
-        attribution = ttk.Label(self.main_frame, text=attribution_text,
+        attribution = ttk.Label(attr_frame, text=attribution_text,
                                 font=('Helvetica', 8), foreground='gray',
-                                anchor='center')
-        attribution.grid(row=16, column=0, columnspan=3, sticky='ew', pady=(2, 0))
+                                anchor='w')
+        attribution.pack(side='left', fill='x', expand=True)
+
+        about_btn = ttk.Button(attr_frame, text="About", width=6,
+                               command=self._show_about)
+        about_btn.pack(side='right', padx=(5, 0))
+
+    def _show_about(self):
+        """Show the About dialog with attribution, citation, and license info."""
+        about_text = (
+            "REM Maker - Relative Elevation Model Generator\n"
+            "\n"
+            "GUI by Matthew C. Morriss\n"
+            "Utah Geological Survey\n"
+            "https://github.com/morrismc/REM_gui\n"
+            "\n"
+            "Underlying REM code (RiverREM) by Kenneth Larrieu\n"
+            "OpenTopography\n"
+            "https://github.com/OpenTopography/RiverREM\n"
+            "\n"
+            "Citation:\n"
+            "  Larrieu, K. (2022). RiverREM (Version 1.1.0) [Software].\n"
+            "  https://github.com/OpenTopography/RiverREM\n"
+            "\n"
+            "License: GPL-3.0\n"
+            "https://www.gnu.org/licenses/gpl-3.0.html"
+        )
+        messagebox.showinfo("About REM Maker", about_text)
 
     def _setup_output_redirect(self):
         """Setup stdout redirection to the console."""
