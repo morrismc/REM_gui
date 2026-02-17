@@ -398,11 +398,21 @@ class REMApp:
         self.console.tag_configure('error', foreground='#f14c4c')
 
     def _create_status_bar(self):
-        """Create the status bar at the bottom."""
+        """Create the status bar and attribution at the bottom."""
         self.status_var = tk.StringVar(value="Ready")
         status_bar = ttk.Label(self.main_frame, textvariable=self.status_var,
                                style='Status.TLabel', relief='sunken', anchor='w')
         status_bar.grid(row=15, column=0, columnspan=3, sticky='ew', pady=(5, 0))
+
+        # Attribution
+        attribution_text = (
+            "GUI by Matthew C. Morriss (Utah Geological Survey). "
+            "Underlying REM code (RiverREM) by Kenneth Larrieu (OpenTopography)."
+        )
+        attribution = ttk.Label(self.main_frame, text=attribution_text,
+                                font=('Helvetica', 8), foreground='gray',
+                                anchor='center')
+        attribution.grid(row=16, column=0, columnspan=3, sticky='ew', pady=(2, 0))
 
     def _setup_output_redirect(self):
         """Setup stdout redirection to the console."""
