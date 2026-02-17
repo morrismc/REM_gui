@@ -58,6 +58,14 @@ try:
     datas += collect_data_files('rasterio')
 except Exception:
     pass
+try:
+    datas += collect_data_files('pyogrio')
+except Exception:
+    pass
+try:
+    datas += collect_data_files('fiona')
+except Exception:
+    pass
 
 # Define which packages are truly needed
 # These are the core dependencies for RiverREM
@@ -86,7 +94,43 @@ HIDDEN_IMPORTS = [
     'geopandas.datasets',
     'pyproj',
     'pyproj.crs',
+
+    # pyogrio - primary I/O engine for geopandas.read_file()
+    'pyogrio',
+    'pyogrio._compat',
+    'pyogrio._env',
+    'pyogrio._err',
+    'pyogrio._geometry',
+    'pyogrio._io',
+    'pyogrio._ogr',
+    'pyogrio._version',
+    'pyogrio._vsi',
+    'pyogrio.core',
+    'pyogrio.errors',
+    'pyogrio.geopandas',
+    'pyogrio.raw',
+    'pyogrio.util',
+
+    # fiona - fallback I/O engine for geopandas.read_file()
     'fiona',
+    'fiona._env',
+    'fiona._err',
+    'fiona._geometry',
+    'fiona._path',
+    'fiona._transform',
+    'fiona._vsiopener',
+    'fiona.collection',
+    'fiona.crs',
+    'fiona.drvsupport',
+    'fiona.env',
+    'fiona.errors',
+    'fiona.model',
+    'fiona.ogrext',
+    'fiona.path',
+    'fiona.schema',
+    'fiona.session',
+    'fiona.transform',
+    'fiona.vfs',
 
     # OSMnx for OpenStreetMap data
     'osmnx',
