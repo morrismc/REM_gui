@@ -7,6 +7,8 @@ for non-technical users. It supports:
 - Loading DEMs in various formats and projections
 - Automatic river centerline detection from OpenStreetMap
 - Custom centerline shapefiles
+- DEM-derived drainage networks (pytopotoolbox): pick a watershed outlet or a
+  trunk stream on a map, and generate a REM clipped to that watershed
 - Configurable interpolation and visualization options
 - Progress logging and status updates
 
@@ -107,8 +109,8 @@ class REMApp:
     def __init__(self, root):
         self.root = root
         self.root.title("REM Maker - Relative Elevation Model Generator")
-        self.root.geometry("750x700")
-        self.root.minsize(650, 600)
+        self.root.geometry("800x860")
+        self.root.minsize(700, 700)
 
         # Message queue for thread-safe GUI updates
         self.message_queue = queue.Queue()
@@ -116,6 +118,11 @@ class REMApp:
         # Processing state
         self.is_processing = False
         self.processing_thread = None
+
+        # DEM-drainage (pytopotoolbox) state
+        self.drainage_network = None      # drainage_selector.DrainageNetwork
+        self.drainage_selection = None    # drainage_selector.DrainageSelection
+        self.network_busy = False
 
         # Setup styles
         self._setup_styles()
@@ -171,6 +178,7 @@ class REMApp:
         )
 
         self.dem_var = tk.StringVar()
+        self.dem_var.trace_add('write', self._on_dem_path_changed)
         self.dem_entry = ttk.Entry(self.main_frame, textvariable=self.dem_var, width=50)
         self.dem_entry.grid(row=1, column=1, sticky='ew', pady=5)
 
@@ -203,16 +211,39 @@ class REMApp:
         )
 
     def _create_centerline_section(self):
-        """Create the centerline options section."""
-        ttk.Label(self.main_frame, text="Centerline Options", style='Header.TLabel').grid(
+        """Create the centerline source section as a notebook with two tabs:
+        OSM/custom file, and DEM-derived drainage network (pytopotoolbox)."""
+        ttk.Label(self.main_frame, text="Centerline Source", style='Header.TLabel').grid(
             row=5, column=0, columnspan=3, sticky='w', pady=(0, 5)
         )
 
+        self.centerline_notebook = ttk.Notebook(self.main_frame)
+        self.centerline_notebook.grid(row=6, column=0, columnspan=3, sticky='ew', pady=5)
+
+        osm_tab = ttk.Frame(self.centerline_notebook, padding=8)
+        drainage_tab = ttk.Frame(self.centerline_notebook, padding=8)
+        self.centerline_notebook.add(osm_tab, text="OSM / Custom Centerline")
+        self.centerline_notebook.add(drainage_tab, text="Select from DEM Drainage")
+
+        self._create_osm_tab(osm_tab)
+        self._create_drainage_tab(drainage_tab)
+
+        # Separator
+        ttk.Separator(self.main_frame, orient='horizontal').grid(
+            row=8, column=0, columnspan=3, sticky='ew', pady=10
+        )
+
+    def _using_drainage_mode(self):
+        """True when the 'Select from DEM Drainage' tab is active."""
+        return self.centerline_notebook.index('current') == 1
+
+    def _create_osm_tab(self, parent):
+        """Original OSM / custom-centerline controls."""
         # Centerline source selection
         self.centerline_source = tk.StringVar(value="osm")
 
-        centerline_frame = ttk.Frame(self.main_frame)
-        centerline_frame.grid(row=6, column=0, columnspan=3, sticky='ew', pady=5)
+        centerline_frame = ttk.Frame(parent)
+        centerline_frame.pack(fill='x', pady=5)
 
         ttk.Radiobutton(
             centerline_frame, text="Use OpenStreetMap (automatic)",
@@ -227,8 +258,8 @@ class REMApp:
         ).pack(side='left')
 
         # Custom shapefile selection
-        self.shapefile_frame = ttk.Frame(self.main_frame)
-        self.shapefile_frame.grid(row=7, column=0, columnspan=3, sticky='ew', pady=5)
+        self.shapefile_frame = ttk.Frame(parent)
+        self.shapefile_frame.pack(fill='x', pady=5)
 
         ttk.Label(self.shapefile_frame, text="Centerline:").pack(side='left', padx=(20, 10))
 
@@ -242,10 +273,69 @@ class REMApp:
         # Initially disable custom shapefile widgets
         self._toggle_centerline_source()
 
-        # Separator
-        ttk.Separator(self.main_frame, orient='horizontal').grid(
-            row=8, column=0, columnspan=3, sticky='ew', pady=10
-        )
+    def _create_drainage_tab(self, parent):
+        """Controls for deriving a stream network from the DEM (pytopotoolbox)
+        and selecting a drainage / trunk stream to build the REM from."""
+        parent.columnconfigure(1, weight=1)
+        hint = {'foreground': 'gray'}
+
+        # Critical drainage area (channel-initiation threshold)
+        ttk.Label(parent, text="Critical drainage area:").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=3)
+        f = ttk.Frame(parent)
+        f.grid(row=0, column=1, sticky='w', pady=3)
+        self.threshold_var = tk.StringVar(value="1.0")
+        ttk.Entry(f, textvariable=self.threshold_var, width=10).pack(side='left')
+        self.threshold_units_var = tk.StringVar(value="km2")
+        ttk.Combobox(f, textvariable=self.threshold_units_var, width=7, state='readonly',
+                     values=['km2', 'm2', 'pixels']).pack(side='left', padx=(5, 0))
+        ttk.Label(parent, text="(smaller = denser network)", **hint).grid(
+            row=0, column=2, sticky='w', pady=3)
+
+        # Analysis resolution
+        ttk.Label(parent, text="Analysis cell size:").grid(row=1, column=0, sticky='w', pady=3)
+        self.analysis_res_var = tk.StringVar(value="native")
+        ttk.Entry(parent, textvariable=self.analysis_res_var, width=10).grid(
+            row=1, column=1, sticky='w', pady=3)
+        ttk.Label(parent, text="('native' or map units; coarser = faster on big lidar)",
+                  **hint).grid(row=1, column=2, sticky='w', pady=3)
+
+        # Watershed clipping and buffer
+        ttk.Label(parent, text="Watershed buffer:").grid(row=2, column=0, sticky='w', pady=3)
+        f = ttk.Frame(parent)
+        f.grid(row=2, column=1, sticky='w', pady=3)
+        self.ws_buffer_var = tk.StringVar(value="0")
+        ttk.Entry(f, textvariable=self.ws_buffer_var, width=10).pack(side='left')
+        ttk.Label(f, text="map units").pack(side='left', padx=(5, 0))
+        self.clip_ws_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(parent, text="Clip DEM/REM to selected watershed",
+                        variable=self.clip_ws_var).grid(row=2, column=2, sticky='w', pady=3)
+
+        # Trunk smoothing
+        ttk.Label(parent, text="Trunk smoothing:").grid(row=3, column=0, sticky='w', pady=3)
+        f = ttk.Frame(parent)
+        f.grid(row=3, column=1, sticky='w', pady=3)
+        self.smooth_var = tk.StringVar(value="0")
+        ttk.Entry(f, textvariable=self.smooth_var, width=10).pack(side='left')
+        ttk.Label(f, text="cells").pack(side='left', padx=(5, 0))
+        ttk.Label(parent, text="(0 = exact D8 path; >0 removes stair-steps)", **hint).grid(
+            row=3, column=2, sticky='w', pady=3)
+
+        # Action buttons
+        bf = ttk.Frame(parent)
+        bf.grid(row=4, column=0, columnspan=3, sticky='w', pady=(8, 3))
+        self.compute_net_btn = ttk.Button(bf, text="1. Compute Stream Network",
+                                          command=self._start_compute_network, width=26)
+        self.compute_net_btn.pack(side='left', padx=(0, 8))
+        self.open_map_btn = ttk.Button(bf, text="2. Select on Map...",
+                                       command=self._open_network_map, width=20,
+                                       state='disabled')
+        self.open_map_btn.pack(side='left')
+
+        self.drainage_status_var = tk.StringVar(
+            value="No network computed. Select a DEM, then compute the stream network.")
+        ttk.Label(parent, textvariable=self.drainage_status_var, foreground='#205090',
+                  wraplength=700, justify='left').grid(
+            row=5, column=0, columnspan=3, sticky='w', pady=(3, 0))
 
     def _create_advanced_section(self):
         """Create the advanced options section (collapsible)."""
@@ -418,7 +508,11 @@ class REMApp:
         try:
             while True:
                 msg = self.message_queue.get_nowait()
-                self._append_to_console(msg)
+                # _log() queues (text, level) tuples; stdout/logging queue plain text
+                if isinstance(msg, tuple):
+                    self._append_to_console(*msg)
+                else:
+                    self._append_to_console(msg)
         except queue.Empty:
             pass
 
@@ -489,6 +583,151 @@ class REMApp:
         # This could enable/disable viz options if needed
         pass
 
+    # ------------------------------------------------------------------ #
+    # DEM drainage network (pytopotoolbox)
+    # ------------------------------------------------------------------ #
+    def _on_dem_path_changed(self, *_):
+        """Invalidate a computed network/selection if the DEM path changes."""
+        net = self.drainage_network
+        if net is not None and os.path.abspath(self.dem_var.get().strip()) != os.path.abspath(net.dem_path):
+            self.drainage_network = None
+            self.drainage_selection = None
+            self.open_map_btn.config(state='disabled')
+            self.drainage_status_var.set(
+                "DEM changed. Recompute the stream network for the new DEM.")
+
+    def _parse_drainage_params(self):
+        """Read and validate drainage-tab parameters. Returns dict or raises ValueError."""
+        try:
+            threshold = float(self.threshold_var.get())
+            if threshold <= 0:
+                raise ValueError
+        except ValueError:
+            raise ValueError("Critical drainage area must be a positive number")
+
+        res_str = self.analysis_res_var.get().strip().lower()
+        if res_str in ('', 'native', 'auto'):
+            analysis_res = None
+        else:
+            try:
+                analysis_res = float(res_str)
+                if analysis_res <= 0:
+                    raise ValueError
+            except ValueError:
+                raise ValueError("Analysis cell size must be 'native' or a positive number")
+
+        try:
+            buffer = float(self.ws_buffer_var.get() or 0)
+            if buffer < 0:
+                raise ValueError
+        except ValueError:
+            raise ValueError("Watershed buffer must be a non-negative number")
+
+        try:
+            smooth = float(self.smooth_var.get() or 0)
+            if smooth < 0:
+                raise ValueError
+        except ValueError:
+            raise ValueError("Trunk smoothing must be a non-negative number of cells")
+
+        return {'threshold': threshold, 'units': self.threshold_units_var.get(),
+                'analysis_res': analysis_res, 'buffer': buffer, 'smooth': smooth}
+
+    def _start_compute_network(self):
+        """Compute flow routing + stream network in a background thread."""
+        if self.network_busy or self.is_processing:
+            return
+        dem_path = self.dem_var.get().strip()
+        if not dem_path or not os.path.isfile(dem_path):
+            messagebox.showerror("No DEM", "Please select a valid DEM file first.")
+            return
+        try:
+            params = self._parse_drainage_params()
+        except ValueError as e:
+            messagebox.showerror("Invalid parameter", str(e))
+            return
+
+        self.network_busy = True
+        self.compute_net_btn.config(state='disabled')
+        self.open_map_btn.config(state='disabled')
+        self.run_btn.config(state='disabled')
+        self.status_var.set("Computing stream network...")
+        self.drainage_status_var.set("Computing stream network...")
+
+        def work():
+            try:
+                from drainage_selector import DrainageNetwork
+                self._log("=" * 50)
+                self._log("Computing DEM-derived stream network (pytopotoolbox)...")
+                net = DrainageNetwork(dem_path, log=self._log)
+                net.compute(params['threshold'], params['units'], params['analysis_res'])
+                self.root.after(0, lambda: self._network_ready(net))
+            except ImportError as e:
+                msg = str(e)
+                self._log(f"Error: {msg}", 'error')
+                self.root.after(0, lambda: self._network_failed(msg))
+            except Exception as e:
+                import traceback
+                msg = str(e)
+                self._log(f"Error computing stream network: {msg}", 'error')
+                self._log(traceback.format_exc(), 'error')
+                self.root.after(0, lambda: self._network_failed(msg))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _network_ready(self, net):
+        self.network_busy = False
+        self.drainage_network = net
+        self.drainage_selection = None
+        self.compute_net_btn.config(state='normal')
+        self.open_map_btn.config(state='normal')
+        self.run_btn.config(state='normal')
+        self.status_var.set("Ready")
+        self._log("Stream network ready. Click '2. Select on Map...' to choose a drainage.",
+                  'success')
+        self.drainage_status_var.set(
+            f"Network ready ({net.S.stream.size:,} stream cells, threshold "
+            f"{net.threshold:g} {net.units}). No drainage selected yet.")
+        self._open_network_map()
+
+    def _network_failed(self, msg):
+        self.network_busy = False
+        self.compute_net_btn.config(state='normal')
+        self.run_btn.config(state='normal')
+        self.status_var.set("Ready")
+        self.drainage_status_var.set(f"Network computation failed: {msg}")
+        messagebox.showerror("Stream network error", msg)
+
+    def _open_network_map(self):
+        """Open the interactive map for picking an outlet / trunk."""
+        if self.drainage_network is None:
+            messagebox.showinfo("No network", "Compute the stream network first.")
+            return
+        try:
+            from drainage_picker import NetworkPickerWindow
+            NetworkPickerWindow(self.root, self.drainage_network, self._on_drainage_selected,
+                                initial=self.drainage_selection, log=self._log)
+        except ImportError as e:
+            self._log(f"Could not open the map window: {e}", 'error')
+            messagebox.showerror(
+                "Missing dependency",
+                f"Could not open the map window:\n{e}\n\n"
+                "The map needs matplotlib's Tk backend and Pillow "
+                "(pip install pillow matplotlib).")
+        except Exception as e:
+            import traceback
+            self._log(f"Could not open the map window: {e}", 'error')
+            self._log(traceback.format_exc(), 'error')
+            messagebox.showerror("Map error", f"Could not open the map window:\n{e}")
+
+    def _on_drainage_selected(self, sel):
+        self.drainage_selection = sel
+        mode = "outlet (auto trunk)" if sel.mode == 'outlet' else "manual trunk"
+        self.drainage_status_var.set(f"Selected by {mode}. {sel.summary}")
+        self._log(f"Drainage selected by {mode}: {sel.summary}", 'success')
+        for w in sel.warnings:
+            self._log(f"  Warning: {w}", 'warning')
+
     def _update_dem_info(self, filepath):
         """Read and display DEM information."""
         try:
@@ -556,7 +795,21 @@ class REMApp:
             except Exception as e:
                 errors.append(f"Could not create output directory: {e}")
 
-        if self.centerline_source.get() == "custom":
+        if self._using_drainage_mode():
+            try:
+                self._parse_drainage_params()
+            except ValueError as e:
+                errors.append(str(e))
+            if self.network_busy:
+                errors.append("Stream network is still being computed")
+            elif self.drainage_network is None:
+                errors.append("Compute the stream network (step 1) on the "
+                              "'Select from DEM Drainage' tab")
+            elif self.drainage_selection is None:
+                errors.append("Select a drainage or trunk stream on the map (step 2)")
+            elif dem_path and os.path.abspath(dem_path) != os.path.abspath(self.drainage_network.dem_path):
+                errors.append("The stream network was computed for a different DEM; recompute it")
+        elif self.centerline_source.get() == "custom":
             shp_path = self.shapefile_var.get().strip()
             if not shp_path:
                 errors.append("Please select a centerline file or use OSM")
@@ -593,6 +846,9 @@ class REMApp:
         )
         if not messagebox.askyesno("Confirm Processing", message):
             return
+
+        # Capture the centerline mode on the main thread (Tk is not thread-safe)
+        self._run_drainage_mode = self._using_drainage_mode()
 
         # Update UI state
         self.is_processing = True
@@ -784,7 +1040,30 @@ class REMApp:
 
             # Centerline
             centerline_shp = None
-            if self.centerline_source.get() == "custom":
+            drainage_mode = self._run_drainage_mode
+            if drainage_mode:
+                # Export the DEM-derived trunk (+ watershed-clipped DEM) and
+                # feed them to RiverREM as a custom centerline.
+                params = self._parse_drainage_params()
+                net = self.drainage_network
+                sel = self.drainage_selection
+                self._log("Using DEM-derived drainage network (pytopotoolbox)")
+                self._log(f"  {sel.summary}")
+                dem_name = os.path.splitext(os.path.basename(dem_path))[0]
+                prefix = f"{dem_name}_ws{sel.outlet_node}"
+                paths = net.export(sel, out_dir, prefix=prefix,
+                                   buffer_m=params['buffer'],
+                                   clip_dem=self.clip_ws_var.get(),
+                                   smooth_cells=params['smooth'])
+                centerline_shp = paths['trunk_shp']
+                dem_path = paths['dem']
+                if self.clip_ws_var.get():
+                    self._log(f"REM will be computed on the watershed-clipped DEM: "
+                              f"{os.path.basename(dem_path)}")
+                if not self.is_processing:
+                    self._log("Processing cancelled by user")
+                    return
+            elif self.centerline_source.get() == "custom":
                 centerline_shp = self.shapefile_var.get().strip()
                 self._log(f"Using custom centerline: {os.path.basename(centerline_shp)}")
             else:
@@ -828,8 +1107,14 @@ class REMApp:
                 'chunk_size': int(chunk_size)
             }
 
+            if drainage_mode and available_params and 'centerline_shp' not in available_params:
+                raise RuntimeError(
+                    "This RiverREM version does not accept a custom centerline, which the "
+                    "DEM-drainage workflow requires. Install the GitHub version:\n"
+                    "  pip install git+https://github.com/OpenTopography/RiverREM.git")
+
             for param, value in optional_params.items():
-                if param in available_params:
+                if param in available_params or (param == 'centerline_shp' and drainage_mode):
                     rem_kwargs[param] = value
                 elif param == 'centerline_shp' and value is not None:
                     self._log(f"Warning: Custom centerline not supported in this RiverREM version", 'warning')

@@ -20,7 +20,7 @@ For a one-folder distribution (smaller total, faster startup):
 
 import sys
 import os
-from PyInstaller.utils.hooks import collect_data_files, copy_metadata
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
 # Increase recursion limit for complex dependency trees
 sys.setrecursionlimit(5000)
@@ -38,6 +38,10 @@ except Exception:
     pass
 try:
     datas += copy_metadata('riverrem')
+except Exception:
+    pass
+try:
+    datas += copy_metadata('topotoolbox')
 except Exception:
     pass
 
@@ -166,7 +170,31 @@ HIDDEN_IMPORTS = [
     # RiverREM itself
     'riverrem',
     'riverrem.REMMaker',
+
+    # DEM-drainage workflow (pytopotoolbox + interactive map)
+    'drainage_selector',
+    'drainage_picker',
+    'rasterio',
+    'rasterio.features',
+    'rasterio.mask',
+    'rasterio.warp',
+    'rasterio.sample',
+    'rasterio.vrt',
+    'rasterio._features',
+    'rasterio._warp',
+    'scipy.sparse',
+    'scipy.sparse.csgraph',
+    'matplotlib.backends.backend_tkagg',
+    'matplotlib.collections',
+    'PIL.ImageTk',
 ]
+
+# pytopotoolbox ships compiled extension modules (_flow, _grid, _stream, ...)
+# that are imported from Python code PyInstaller may not trace fully.
+try:
+    HIDDEN_IMPORTS += collect_submodules('topotoolbox')
+except Exception:
+    pass
 
 # Packages to exclude. ONLY exclude third-party packages that are clearly
 # not part of the dependency chain. Never exclude standard library modules

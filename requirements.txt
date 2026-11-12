@@ -27,3 +27,10 @@ matplotlib>=3.3.0
 seaborn>=0.11.0
 Pillow>=8.0.0
 requests>=2.25.0
+
+# DEM-derived drainage network workflow ("Select from DEM Drainage" tab).
+# Optional: the rest of the GUI works without it.
+# pytopotoolbox requires NumPy >= 2, so GDAL must also be built for NumPy 2
+# (conda-forge builds are).
+topotoolbox>=0.0.12
+rasterio>=1.3
